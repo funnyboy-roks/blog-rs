@@ -241,10 +241,6 @@ enum MathReplacer {
 
 impl Replacer for MathReplacer {
     fn replace_append(&mut self, caps: &regex::Captures<'_>, dst: &mut String) {
-        //if caps.get(1).is_some() {
-        //    dst.push_str(&caps[2]);
-        //    return;
-        //}
         let opts = katex::Opts::builder()
             .display_mode(match self {
                 Self::Block => true,
