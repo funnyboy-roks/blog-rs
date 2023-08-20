@@ -1,0 +1,58 @@
+<!-- vim: set ft=html -->
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="/favicon.png" />
+		<meta name="viewport" content="width=device-width" />
+        <link rel="stylesheet" href="/styles.css"/>
+        <link rel="stylesheet" href="/hljs-circus.css"/>
+        <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.8.0/build/highlight.min.js"></script>
+
+        {% include "head" %}
+
+	</head>
+	<body>
+        <main>
+
+            {% if index %}
+                {% include "index" %}
+            {% else %}
+                {% include "page" %}
+            {% endif %}
+
+        </main>
+
+        <footer>
+            <p>
+                <a href="https://funnyboyroks.com" target="_blank">Website</a>
+                |
+                <a href="https://github.com/funnyboy-roks" target="_blank">GitHub</a>
+                |
+                <a href="https://api.funnyboyroks.com/discord" target="_blank">Discord</a>
+            </p>
+            <p>Made with 💚 by funnyboy_roks</p>
+        </footer>
+
+        <script>
+            // unfortunately, this means that we can't have highlighting on pages without js, but
+            // there's no great crate to handle syntax highlighting :(
+            hljs.highlightAll();
+
+            // Handle all dates to make them localised
+            // This is also formatted by the server, so if js is disabled they'll get dd mmm yyyy format
+            const dtf /* ;) */ = Intl.DateTimeFormat(undefined, {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+            });
+
+            document.querySelectorAll('time')
+                .forEach(elt => {
+                    if (elt.hasAttribute('datetime')) {
+                        elt.innerText = dtf.format(new Date(elt.getAttribute('datetime')))
+                    }
+                });
+        </script>
+	</body>
+</html>

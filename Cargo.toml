@@ -1,0 +1,20 @@
+[package]
+name = "blog-rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+highlight-pulldown = "0.2.2"
+pulldown-cmark = "0.9.3"
+pulldown-cmark-frontmatter = "0.1.1"
+serde = { version = "1.0.183", features = ["derive"] }
+upon = "0.7.1"
+chrono = { version = "0.4.26", features = ["serde"] }
+toml = "0.7.6"
+regex = "1.9.3"
+lazy_static = "1.4.0"
+katex = "0.4.6"
+minify-html = "0.11.1"

@@ -1,0 +1,71 @@
+<!-- vim: set ft=html -->
+<link rel="stylesheet" href="/index.css"/>
+<h1>"Blog"</h1>
+<p>
+    Welcome to my "blog"!  You can read about it and its creation <a href="/welcome">here</a>!</p>
+
+{% for page in pages %}
+<div class="page">
+    <h2><a href="/{{ page.file }}">{{ page.frontmatter.title }}</a></h2>
+    <div class="desc">
+        <p>{{ page.frontmatter.description }}</p>
+    </div>
+    <p class="meta">
+        <time datetime="{{ page.frontmatter.date }}">{{ page.date_formatted }}</time>
+        {% if page.frontmatter.tags %}
+            <span class="sep">|</span>
+            <ul class="tags">
+            {% for tag in page.frontmatter.tags %}
+                <li>#{{ tag }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    </p>
+</div>
+{% endfor %}
+
+<br />
+<style>
+
+.page {
+    padding: 2rem 0;
+}
+
+.page h2 {
+    margin: 0;
+}
+
+.desc {
+    padding: 0;
+}
+
+.meta {
+    display: inline;
+    color: var(--base05);
+}
+
+.sep {
+    padding: 0 .5rem;
+}
+
+ul.tags {
+    color: var(--base05);
+    display: inline;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+ul.tags li {
+    display: inline;
+}
+
+ul.tags li:before {
+    content: '';
+}
+
+h2:after {
+    content: '  >';
+}
+
+</style>

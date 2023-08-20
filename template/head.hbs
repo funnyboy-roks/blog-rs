@@ -1,0 +1,23 @@
+<!-- vim: set ft=html -->
+{% if index %}
+<title>Funny's Blog</title>
+<meta property="og:title" content="Funny's Blog">
+<meta property="og:image" content="">
+<meta property="og:description" content="Blog written by funnyboy_roks">
+<meta property="og:site_name" content="Funny's Blog">
+<meta property="og:type" content="article">
+{% else %}
+<title>{{ frontmatter.title }} | Funny's Blog</title>
+<meta property="og:title" content="{{ frontmatter.title }}">
+<meta property="og:image" content="https://blog.funnyboyroks.com/favicon.ico">
+<meta property="og:description" content="{{ frontmatter.description }}">
+<meta property="og:site_name" content="Funny's Blog">
+<meta property="og:type" content="article">
+<meta property="og:article:published" content="{{ frontmatter.date }}">
+<meta property="og:article:author" content="funnyboy_roks">
+    {% if frontmatter.tags %}
+        {% for tag in frontmatter.tags %}
+            <meta property="og:article:tag" content="{{ tag }}">
+        {% endfor %}
+    {% endif %}
+{% endif %}
