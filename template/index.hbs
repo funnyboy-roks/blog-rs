@@ -1,24 +1,41 @@
 <!-- vim: set ft=html -->
 <link rel="stylesheet" href="/index.css"/>
-<h1>"Blog"</h1>
+<h1>
+    {% if title %}
+        {{ title }}
+    {% else %}
+        "Blog"
+    {% endif %}
+</h1>
 <p>
-    Welcome to my "blog"!  You can read about it and its creation <a href="/welcome">here</a>!</p>
+    {% if desc %}
+        {{ desc }}
+    {% endif %}
+</p>
 
 {% for page in pages %}
 <div class="page">
-    <h2><a href="/{{ page.file }}">{{ page.frontmatter.title }}</a></h2>
+    {% if page.frontmatter %}
+    <h2><a href="/{{ page.file }}">{{ page.frontmatter.title }}{% if page.is_dir %}/{% endif %}</a></h2>
+    {% else %}
+    <h2><a href="/{{ page.file }}">{{ page.file }}</a></h2>
+    {% endif %}
+    {% if page.frontmatter %}
     <div class="desc">
         <p>{{ page.frontmatter.description }}</p>
     </div>
+    {% endif %}
     <p class="meta">
-        <time datetime="{{ page.frontmatter.date }}">{{ page.date_formatted }}</time>
-        {% if page.frontmatter.tags %}
-            <span class="sep">|</span>
-            <ul class="tags">
-            {% for tag in page.frontmatter.tags %}
-                <li>#{{ tag }}</li>
-            {% endfor %}
-            </ul>
+        {% if page.frontmatter %}
+            <time datetime="{{ page.frontmatter.date }}">{{ page.date_formatted }}</time>
+            {% if page.frontmatter.tags %}
+                <span class="sep">|</span>
+                <ul class="tags">
+                {% for tag in page.frontmatter.tags %}
+                    <li>#{{ tag }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
         {% endif %}
     </p>
 </div>
