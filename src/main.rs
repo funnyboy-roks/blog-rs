@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::Context;
-use pulldown_cmark::{CowStr, Event, MathMode, Options, Parser, Tag};
+use pulldown_cmark::{CowStr, Event, MathMode, Options, Parser, Tag, TagEnd};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use upon::Template;
 
@@ -115,54 +115,129 @@ fn render_files(
         let parser = Parser::new_ext(&content, md_options);
 
         let mut heading_level = None;
-        let parser = parser.filter_map(|event| match event {
-            Event::Math(mm, s) => {
-                let opts = katex::Opts::builder()
-                    .display_mode(match mm {
-                        MathMode::Display => true,
-                        MathMode::Inline => false,
-                    })
-                    .output_type(katex::opts::OutputType::Mathml)
-                    .build()
-                    .unwrap();
+        let mut quoting = false;
+        let parser = parser.flat_map(|event| -> Box<dyn Iterator<Item = Event>> {
+            match event {
+                Event::Math(mm, s) => {
+                    let opts = katex::Opts::builder()
+                        .display_mode(match mm {
+                            MathMode::Display => true,
+                            MathMode::Inline => false,
+                        })
+                        .output_type(katex::opts::OutputType::Mathml)
+                        .build()
+                        .unwrap();
 
-                let mut dst = String::new();
-                match katex::render_with_opts(&s, &opts) {
-                    Ok(ref ml) => dst.push_str(ml),
-                    Err(err) => {
-                        eprintln!("Maths error: {:?}\n{}", err, s);
-                        dst.push_str(&format!(
-                            r#"<span style="red">Maths Error: {:?}</span>"#,
-                            err
-                        ));
+                    let mut dst = String::new();
+                    match katex::render_with_opts(&s, &opts) {
+                        Ok(ref ml) => dst.push_str(ml),
+                        Err(err) => {
+                            // gotta love these stringly typed errors
+                            let err = match err {
+                                e @ katex::Error::JsInitError(_) => format!("{:?}", e),
+                                katex::Error::JsExecError(e) => {
+                                    let mut e = e.replace("String(\"", "");
+
+                                    if e.strip_suffix("\")").is_some() {
+                                        e.pop();
+                                        e.pop();
+                                    }
+
+                                    e.replace(r"\\", r"\")
+                                }
+                                e @ katex::Error::JsValueError(_) => format!("{:?}", e),
+                                e @ _ => format!("{:?}", e),
+                            };
+                            eprintln!("Maths error: {:?}\n{}", err, s);
+                            dst.push_str(&format!(
+                                r#"<span style="color: red">Maths Error: {}</span>"#,
+                                err
+                            ));
+                        }
+                    }
+                    Box::new(std::iter::once(Event::Html(dst.into())))
+                }
+                Event::Start(Tag::Heading { level, .. }) => {
+                    heading_level = Some(level);
+                    Box::new(std::iter::empty())
+                }
+                Event::Start(Tag::BlockQuote) => {
+                    quoting = true;
+                    Box::new(std::iter::empty())
+                }
+                e @ Event::End(TagEnd::BlockQuote) => {
+                    quoting = false;
+                    Box::new(std::iter::once(e))
+                }
+                Event::Text(ref text) => {
+                    if quoting {
+                        quoting = false;
+                        if let Some((left, right)) = text.split_once(':') {
+                            dbg!(left, right);
+                            if left.starts_with('#') {
+                                let right = right.trim();
+                                let subtitle = if right.starts_with('(') && right.ends_with(')') {
+                                    Some(&right[1..right.len() - 1])
+                                } else {
+                                    None
+                                };
+                                let mut out = Vec::new();
+                                out.push(Event::Html(
+                                    format!(
+                                        r#"<blockquote class="{}"><h1>{}{}</h1>"#,
+                                        &left[1..],
+                                        match &*left[1..].to_lowercase() {
+                                            "def" => "Definition",
+                                            "prop" => "Proposition",
+                                            "proof" => "Proof",
+                                            "ex" => "Example",
+                                            "thm" => "Theorem",
+                                            o => o,
+                                        },
+                                        if let Some(subtitle) = subtitle {
+                                            format!(" <small>({})</small>", subtitle)
+                                        } else {
+                                            String::new()
+                                        }
+                                    )
+                                    .into(),
+                                ));
+                                if subtitle.is_none() {
+                                    out.push(Event::Text(right.to_string().into()));
+                                }
+                                Box::new(out.into_iter())
+                            } else {
+                                Box::new(
+                                    [
+                                        Event::Html(format!(r#"<blockquote>"#).into()),
+                                        Event::Text(text.to_string().into()),
+                                    ]
+                                    .into_iter(),
+                                )
+                            }
+                        } else {
+                            Box::new(std::iter::once(Event::Text(text.to_string().into())))
+                        }
+                    } else if let Some(heading_level) = heading_level.take() {
+                        let anchor = text
+                            .clone()
+                            .into_string()
+                            .trim()
+                            .to_lowercase()
+                            .replace(" ", "-");
+
+                        let out_tag = format!(
+                            r##"<{} id="{}"><a class="header" href="#{1}">{}</a>"##,
+                            heading_level, anchor, text
+                        );
+
+                        Box::new(std::iter::once(Event::Html(CowStr::from(out_tag))))
+                    } else {
+                        Box::new(std::iter::once(Event::Text(CowStr::from(text.to_string()))))
                     }
                 }
-                Some(Event::Html(dst.into()))
+                _ => Box::new(std::iter::once(event)),
             }
-            Event::Start(Tag::Heading { level, .. }) => {
-                heading_level = Some(level);
-                None
-            }
-            Event::Text(text) => {
-                if let Some(heading_level) = heading_level.take() {
-                    let anchor = text
-                        .clone()
-                        .into_string()
-                        .trim()
-                        .to_lowercase()
-                        .replace(" ", "-");
-
-                    let out_tag = format!(
-                        r##"<{} id="{}"><a class="header" href="#{1}">{}</a>"##,
-                        heading_level, anchor, text
-                    );
-
-                    Some(Event::Html(CowStr::from(out_tag)))
-                } else {
-                    Some(Event::Text(text))
-                }
-            }
-            _ => Some(event),
         });
 
         let mut content = String::new();
