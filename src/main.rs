@@ -143,14 +143,26 @@ fn render_files(
                                         e.pop();
                                     }
 
-                                    e.replace(r"\\", r"\")
+                                    let e = if let Some(e) = e.strip_prefix("ParseError: ") {
+                                        e
+                                    } else {
+                                        &e
+                                    };
+
+                                    let e = if let Some(e) = e.strip_prefix("KaTeX parse error: ") {
+                                        e
+                                    } else {
+                                        e
+                                    };
+
+                                    e.replace(r"\\", r"\").replace(r"\u{332}", "")
                                 }
                                 e @ katex::Error::JsValueError(_) => format!("{:?}", e),
                                 e @ _ => format!("{:?}", e),
                             };
-                            eprintln!("Maths error: {:?}\n{}", err, s);
+                            eprintln!("Maths Error: '{}'\nIn Math: '{}'", err, s);
                             dst.push_str(&format!(
-                                r#"<span style="color: red">Maths Error: {}</span>"#,
+                                r#"<span style="color: red" class="error">Maths Error: {}</span>"#,
                                 err
                             ));
                         }
@@ -165,15 +177,14 @@ fn render_files(
                     quoting = true;
                     Box::new(std::iter::empty())
                 }
-                e @ Event::End(TagEnd::BlockQuote) => {
+                Event::End(TagEnd::BlockQuote) => {
                     quoting = false;
-                    Box::new(std::iter::once(e))
+                    Box::new(std::iter::once(event))
                 }
                 Event::Text(ref text) => {
                     if quoting {
                         quoting = false;
                         if let Some((left, right)) = text.split_once(':') {
-                            dbg!(left, right);
                             if left.starts_with('#') {
                                 let right = right.trim();
                                 let subtitle = if right.starts_with('(') && right.ends_with(')') {
