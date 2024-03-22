@@ -106,7 +106,7 @@ fn render_files(
 
         let name: String = file_name.trim_end_matches(".md").into();
 
-        eprintln!("rendering {}", path.display());
+        eprintln!("[INFO] Rendering {}", path.display());
 
         let content = fs::read_to_string(path)?;
 
@@ -116,143 +116,162 @@ fn render_files(
 
         let mut heading_level = None;
         let mut quoting = false;
-        let parser = parser.flat_map(|event| -> Box<dyn Iterator<Item = Event>> {
-            match event {
-                Event::Math(mm, s) => {
-                    let opts = katex::Opts::builder()
-                        .display_mode(match mm {
-                            MathMode::Display => true,
-                            MathMode::Inline => false,
-                        })
-                        .output_type(katex::opts::OutputType::Mathml)
-                        .build()
-                        .unwrap();
+        let mut block_depth = 0;
+        let parser = parser
+            // .map(|e| dbg!(e))
+            .flat_map(|event| -> Box<dyn Iterator<Item = Event>> {
+                match event {
+                    Event::Math(mm, s) => {
+                        let opts = katex::Opts::builder()
+                            .display_mode(match mm {
+                                MathMode::Display => true,
+                                MathMode::Inline => false,
+                            })
+                            .output_type(katex::opts::OutputType::Mathml)
+                            .build()
+                            .unwrap();
 
-                    let mut dst = String::new();
-                    match katex::render_with_opts(&s, &opts) {
-                        Ok(ref ml) => dst.push_str(ml),
-                        Err(err) => {
-                            // gotta love these stringly typed errors
-                            let err = match err {
-                                e @ katex::Error::JsInitError(_) => format!("{:?}", e),
-                                katex::Error::JsExecError(e) => {
-                                    let mut e = e.replace("String(\"", "");
+                        let mut dst = String::new();
+                        match katex::render_with_opts(&s, &opts) {
+                            Ok(ref ml) => dst.push_str(ml),
+                            Err(err) => {
+                                // gotta love these stringly typed errors
+                                let err = match err {
+                                    e @ katex::Error::JsInitError(_) => format!("{:?}", e),
+                                    katex::Error::JsExecError(e) => {
+                                        let mut e = e.replace("String(\"", "");
 
-                                    if e.strip_suffix("\")").is_some() {
-                                        e.pop();
-                                        e.pop();
+                                        if e.strip_suffix("\")").is_some() {
+                                            e.pop();
+                                            e.pop();
+                                        }
+
+                                        let e = if let Some(e) = e.strip_prefix("ParseError: ") {
+                                            e
+                                        } else {
+                                            &e
+                                        };
+
+                                        let e = if let Some(e) =
+                                            e.strip_prefix("KaTeX parse error: ")
+                                        {
+                                            e
+                                        } else {
+                                            e
+                                        };
+
+                                        e.replace(r"\\", r"\").replace(r"\u{332}", "")
                                     }
-
-                                    let e = if let Some(e) = e.strip_prefix("ParseError: ") {
-                                        e
-                                    } else {
-                                        &e
-                                    };
-
-                                    let e = if let Some(e) = e.strip_prefix("KaTeX parse error: ") {
-                                        e
-                                    } else {
-                                        e
-                                    };
-
-                                    e.replace(r"\\", r"\").replace(r"\u{332}", "")
-                                }
-                                e @ katex::Error::JsValueError(_) => format!("{:?}", e),
-                                e @ _ => format!("{:?}", e),
-                            };
-                            eprintln!("Maths Error: '{}'\nIn Math: '{}'", err, s);
-                            dst.push_str(&format!(
+                                    e @ katex::Error::JsValueError(_) => format!("{:?}", e),
+                                    e @ _ => format!("{:?}", e),
+                                };
+                                eprintln!("[ERROR] Maths Error: '{}'\nIn Math: '{}'", err, s);
+                                dst.push_str(&format!(
                                 r#"<span style="color: red" class="error">Maths Error: {}</span>"#,
                                 err
                             ));
-                        }
-                    }
-                    Box::new(std::iter::once(Event::Html(dst.into())))
-                }
-                Event::Start(Tag::Heading { level, .. }) => {
-                    heading_level = Some(level);
-                    Box::new(std::iter::empty())
-                }
-                Event::Start(Tag::BlockQuote) => {
-                    quoting = true;
-                    Box::new(std::iter::empty())
-                }
-                Event::End(TagEnd::BlockQuote) => {
-                    quoting = false;
-                    Box::new(std::iter::once(event))
-                }
-                Event::Text(ref text) => {
-                    if quoting {
-                        quoting = false;
-                        if let Some((left, right)) = text.split_once(':') {
-                            if left.starts_with('#') {
-                                let right = right.trim();
-                                let subtitle = if right.starts_with('(') && right.ends_with(')') {
-                                    Some(&right[1..right.len() - 1])
-                                } else {
-                                    None
-                                };
-                                let mut out = Vec::new();
-                                out.push(Event::Html(
-                                    format!(
-                                        r#"<blockquote class="{}"><h1>{}{}</h1>"#,
-                                        &left[1..],
-                                        match &*left[1..].to_lowercase() {
-                                            "def" => "Definition",
-                                            "prop" => "Proposition",
-                                            "proof" => "Proof",
-                                            "ex" => "Example",
-                                            "thm" => "Theorem",
-                                            o => o,
-                                        },
-                                        if let Some(subtitle) = subtitle {
-                                            format!(" <small>({})</small>", subtitle)
-                                        } else {
-                                            String::new()
-                                        }
-                                    )
-                                    .into(),
-                                ));
-                                if subtitle.is_none() {
-                                    out.push(Event::Text(right.to_string().into()));
-                                }
-                                Box::new(out.into_iter())
-                            } else {
-                                Box::new(
-                                    [
-                                        Event::Html(format!(r#"<blockquote>"#).into()),
-                                        Event::Text(text.to_string().into()),
-                                    ]
-                                    .into_iter(),
-                                )
                             }
-                        } else {
-                            Box::new(std::iter::once(Event::Text(text.to_string().into())))
                         }
-                    } else if let Some(heading_level) = heading_level.take() {
-                        let anchor = text
-                            .clone()
-                            .into_string()
-                            .trim()
-                            .to_lowercase()
-                            .replace(" ", "-");
-
-                        let out_tag = format!(
-                            r##"<{} id="{}"><a class="header" href="#{1}">{}</a>"##,
-                            heading_level, anchor, text
-                        );
-
-                        Box::new(std::iter::once(Event::Html(CowStr::from(out_tag))))
-                    } else {
-                        Box::new(std::iter::once(Event::Text(CowStr::from(text.to_string()))))
+                        Box::new(std::iter::once(Event::Html(dst.into())))
                     }
+                    Event::Start(Tag::Heading { level, .. }) => {
+                        heading_level = Some(level);
+                        Box::new(std::iter::empty())
+                    }
+                    Event::Start(Tag::BlockQuote) => {
+                        quoting = true;
+                        Box::new(std::iter::empty())
+                    }
+                    Event::End(TagEnd::BlockQuote) => {
+                        quoting = false;
+                        Box::new(std::iter::once(event))
+                    }
+                    Event::Text(ref text) => {
+                        let mut emit: Vec<Event> = Vec::new();
+                        let text_trim = text.trim();
+                        if text_trim.ends_with("{") {
+                            let left = text_trim.strip_suffix("{").expect("checked above").trim();
+
+                            let (class, subtitle) = if left.contains('(') {
+                                let class: String =
+                                    left.chars().take_while(|c| *c != '(').collect();
+                                let class = class.trim_end().to_string();
+                                let subtitle: String = left
+                                    .chars()
+                                    .skip_while(|c| *c != '(')
+                                    .skip(1)
+                                    .take_while(|c| *c != ')')
+                                    .collect();
+
+                                (class, Some(subtitle))
+                            } else {
+                                (left.trim().to_string(), None)
+                            };
+                            block_depth += 1;
+                            return Box::new(std::iter::once(Event::Html(
+                                format!(
+                                    r#"<blockquote class="{}"><h1>{}{}</h1>"#,
+                                    class,
+                                    match &*class.to_lowercase() {
+                                        "def" => "Definition",
+                                        "prop" => "Proposition",
+                                        "proof" => "Proof",
+                                        "ex" => "Example",
+                                        "thm" => "Theorem",
+                                        _ => &class,
+                                    },
+                                    if let Some(subtitle) = subtitle {
+                                        format!(" <small>({})</small>", subtitle)
+                                    } else {
+                                        String::new()
+                                    }
+                                )
+                                .into(),
+                            )));
+                        }
+                        if text_trim == "}" {
+                            if block_depth > 0 {
+                                block_depth -= 1;
+                                return Box::new(std::iter::once(Event::Html(
+                                    format!("</blockquote>").into(),
+                                )));
+                            } else {
+                                eprintln!("[WARN] Got a '}}' with no open blocks");
+                            }
+                        }
+                        if let Some(heading_level) = heading_level.take() {
+                            let anchor = text
+                                .clone()
+                                .into_string()
+                                .trim()
+                                .to_lowercase()
+                                .replace(" ", "-");
+
+                            let out_tag = format!(
+                                r##"<{} id="{}"><a class="header" href="#{1}">{}</a>"##,
+                                heading_level, anchor, text
+                            );
+
+                            emit.push(Event::Html(CowStr::from(out_tag)));
+                        } else {
+                            emit.push(Event::Text(CowStr::from(text.to_string())));
+                        }
+
+                        Box::new(emit.into_iter())
+                    }
+                    _ => Box::new(std::iter::once(event)),
                 }
-                _ => Box::new(std::iter::once(event)),
-            }
-        });
+            });
 
         let mut content = String::new();
         pulldown_cmark::html::push_html(&mut content, parser);
+
+        if block_depth != 0 {
+            eprintln!(
+                "[WARN] Unbalanced blocks, got {} more '{{'s than '}}'s",
+                block_depth
+            );
+        }
 
         let mut out_dir = out_dir.as_ref().to_path_buf();
         out_dir.push(&name);
@@ -350,7 +369,7 @@ fn render_files(
         )
     });
 
-    eprintln!("rendering Index for {}", out_path);
+    eprintln!("[INFO] Rendering index.html for {}/", out_path);
     let out = template
         .render(upon::value! {
             title: out_info.clone().map(|fm| fm.title),
@@ -445,7 +464,10 @@ fn main() -> anyhow::Result<()> {
 
     render_files(&layout_template, "md", md_options, out_dir)?;
 
-    eprintln!("Completed rendering in {}ms", time.elapsed().as_millis());
+    eprintln!(
+        "[INFO] Completed rendering in {}ms",
+        time.elapsed().as_millis()
+    );
     Ok(())
 }
 
